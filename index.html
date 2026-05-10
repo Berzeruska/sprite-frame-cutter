@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sprite Frame Cutter</title>
+  <style>
+    /* ── Reset & tokens ────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0d0d12;
+      --bg-panel:   #13131c;
+      --bg-item:    #0a0a10;
+      --border:     #252530;
+      --border-sel: #c4a882;
+      --text:       #ddd5c5;
+      --text-dim:   #555;
+      --accent:     #c4a882;
+      --accent-blue:#88ccee;
+      --accent-sel: #ffdd88;
+      --accent-draw:#ffaa44;
+      --danger:     #cc4444;
+      --font:       'Courier New', monospace;
+      --radius:     5px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .app-header { margin-bottom: 20px; }
+    .app-header h1 {
+      font-size: 16px; font-weight: bold;
+      color: var(--accent); letter-spacing: 3px; text-transform: uppercase;
+    }
+    .app-header .subtitle { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .workspace { display: flex; gap: 20px; align-items: flex-start; }
+
+    /* ── Canvas area ────────────────────────────────────── */
+    .canvas-area { flex: 1; overflow: auto; min-width: 0; }
+    #mainCanvas  { display: block; cursor: crosshair; border: 1px solid var(--border); background: #1a1a1a; }
+    .zoom-bar    { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .zoom-bar label { font-size: 11px; color: var(--text-dim); }
+    .zoom-bar input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+    .zoom-val    { font-size: 11px; color: var(--accent); width: 28px; text-align: right; }
+    .coords      { font-size: 10px; color: var(--text-dim); margin-top: 6px; min-height: 14px; }
+
+    /* ── Sidebar ────────────────────────────────────────── */
+    .sidebar { width: 300px; flex-shrink: 0; }
+
+    /* ── Panel ──────────────────────────────────────────── */
+    .panel {
+      background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; margin-bottom: 14px;
+    }
+    .panel h2 {
+      font-size: 10px; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px;
+    }
+
+    /* ── Instructions ───────────────────────────────────── */
+    .instructions { font-size: 11px; color: #888; line-height: 1.9; }
+    .instructions strong { color: var(--accent); }
+
+    /* ── Buttons ────────────────────────────────────────── */
+    .btn {
+      display: block; width: 100%;
+      background: #1e1a14; border: 1px solid #3a3020;
+      color: var(--accent); padding: 8px 12px;
+      cursor: pointer; border-radius: var(--radius);
+      font-family: var(--font); font-size: 11px;
+      text-align: left; margin-bottom: 6px;
+      transition: background .15s;
+      user-select: none;
+    }
+    .btn:hover { background: #2a2018; border-color: #5a4a2a; }
+    .btn.primary { background: #2a1e08; border-color: var(--accent); text-align: center; font-weight: bold; }
+    .btn.primary:hover { background: #3a2a12; }
+    .btn.danger:hover  { background: #2a1010; border-color: var(--danger); color: var(--danger); }
+
+    /* ── Status ─────────────────────────────────────────── */
+    #status { font-size: 11px; color: #7a9a6a; margin-top: 8px; min-height: 16px; }
+    #status.error { color: var(--danger); }
+
+    /* ── Frames list ────────────────────────────────────── */
+    .frames-list { max-height: 340px; overflow-y: auto; }
+    .empty-msg   { color: var(--text-dim); font-size: 11px; }
+
+    /* ── Frame item ─────────────────────────────────────── */
+    .frame-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-radius: 4px; margin-bottom: 4px;
+      background: var(--bg-item); border: 1px solid var(--border);
+      font-size: 11px; cursor: pointer;
+      transition: border-color .15s;
+    }
+    .frame-item:hover       { border-color: #3a3020; }
+    .frame-item.selected    { border-color: var(--border-sel); background: #1a1608; }
+    .frame-idx              { color: var(--accent); font-weight: bold; width: 18px; flex-shrink: 0; text-align: right; }
+    .frame-name             {
+      flex: 1; background: #060608; border: 1px solid #282828;
+      color: var(--text); padding: 2px 6px;
+      font-family: var(--font); font-size: 11px; border-radius: 3px; min-width: 0;
+    }
+    .frame-name:focus       { outline: none; border-color: var(--accent); }
+    .frame-coords           { color: var(--text-dim); width: 62px; flex-shrink: 0; font-size: 10px; line-height: 1.4; }
+    .frame-del              {
+      background: none; border: none; color: #4a2a2a;
+      cursor: pointer; font-size: 15px; padding: 0 2px;
+      transition: color .15s; flex-shrink: 0;
+    }
+    .frame-del:hover { color: var(--danger); }
+
+    .frames-list::-webkit-scrollbar       { width: 5px; }
+    .frames-list::-webkit-scrollbar-track { background: var(--bg); }
+    .frames-list::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>Sprite Frame Cutter</h1>
+  <p class="subtitle">Clique e arraste no spritesheet para marcar cada frame. Nomeie e exporte.</p>
+</header>
+
+<div class="workspace">
+  <div class="canvas-area">
+    <div class="zoom-bar">
+      <label for="zoomSlider">Zoom:</label>
+      <input type="range" id="zoomSlider" min="1" max="6" value="3" step="0.5">
+      <span class="zoom-val" id="zoomVal">3×</span>
+    </div>
+    <canvas id="mainCanvas"></canvas>
+    <div class="coords" id="coords">x: — y: —</div>
+  </div>
+
+  <aside class="sidebar">
+    <section class="panel">
+      <h2>Como usar</h2>
+      <div class="instructions">
+        <strong>1.</strong> Clique em "Carregar Sprite" ou arraste a imagem aqui<br>
+        <strong>2.</strong> Clique e arraste no canvas para marcar um frame<br>
+        <strong>3.</strong> Dê um nome ao frame (ex: <code>idle_0</code>, <code>walk_0</code>…)<br>
+        <strong>4.</strong> Repita para cada animação<br>
+        <strong>5.</strong> Clique em "Exportar Frames" para baixar os PNGs
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Arquivo</h2>
+
+      <!-- input visível mas coberto pelo label estilizado -->
+      <div style="position:relative; margin-bottom:6px;">
+        <input type="file" id="fileInput" accept="image/*"
+               style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;">
+        <div class="btn" style="margin-bottom:0; pointer-events:none;">📂 Carregar Sprite</div>
+      </div>
+
+      <button class="btn primary" id="btnExport">⬇ Exportar Todos os Frames</button>
+      <button class="btn danger"  id="btnClear" >🗑 Limpar Tudo</button>
+
+      <div id="status">Carregue o spritesheet para começar.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Frames marcados (<span id="frameCount">0</span>)</h2>
+      <div class="frames-list" id="framesList">
+        <div class="empty-msg">Nenhum frame marcado ainda.</div>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<script>
+/* ================================================================
+   STATE
+   ================================================================ */
+const state = {
+  image:         null,   // HTMLImageElement
+  zoom:          3,
+  frames:        [],     // [{ x, y, w, h, name }]
+  selectedIndex: -1,
+  counter:       0,      // auto-name counter
+  draft:         null,   // { startX, startY, curX, curY } while drawing
+};
+
+/* ================================================================
+   DOM REFS
+   ================================================================ */
+const canvas     = document.getElementById('mainCanvas');
+const ctx        = canvas.getContext('2d');
+const fileInput  = document.getElementById('fileInput');
+const zoomSlider = document.getElementById('zoomSlider');
+const zoomValEl  = document.getElementById('zoomVal');
+const coordsEl   = document.getElementById('coords');
+const framesList = document.getElementById('framesList');
+const frameCount = document.getElementById('frameCount');
+const statusEl   = document.getElementById('status');
+
+/* ================================================================
+   IMAGE LOADING
+   ================================================================ */
+fileInput.addEventListener('change', function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+
+  img.onload = function () {
+    URL.revokeObjectURL(url);
+    state.image = img;
+    state.frames = [];
+    state.selectedIndex = -1;
+    state.counter = 0;
+    render();
+    renderList();
+    setStatus('Imagem carregada: ' + img.width + '×' + img.height + 'px');
+  };
+
+  img.onerror = function () {
+    URL.revokeObjectURL(url);
+    setStatus('Erro ao carregar imagem.', true);
+  };
+
+  img.src = url;
+  this.value = ''; // reset so same file can be re-selected
+});
+
+/* Drag & drop onto body */
+document.body.addEventListener('dragover', function (e) { e.preventDefault(); });
+document.body.addEventListener('drop', function (e) {
+  e.preventDefault();
+  const file = e.dataTransfer && e.dataTransfer.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = function () {
+    URL.revokeObjectURL(url);
+    state.image = img;
+    state.frames = [];
+    state.selectedIndex = -1;
+    state.counter = 0;
+    render();
+    renderList();
+    setStatus('Imagem carregada: ' + img.width + '×' + img.height + 'px');
+  };
+  img.src = url;
+});
+
+/* ================================================================
+   CANVAS RENDERING
+   ================================================================ */
+const COLOR = {
+  frame:        '#88ccee',
+  frameFill:    'rgba(136,204,238,0.08)',
+  selected:     '#ffdd88',
+  selectedFill: 'rgba(255,221,136,0.15)',
+  drawing:      '#ffaa44',
+  drawingFill:  'rgba(255,170,68,0.12)',
+  checker1:     '#333',
+  checker2:     '#2a2a2a',
+};
+
+function render() {
+  const { image, zoom, frames, selectedIndex, draft } = state;
+  if (!image) return;
+
+  canvas.width  = image.width  * zoom;
+  canvas.height = image.height * zoom;
+
+  /* checkerboard */
+  const cs = 8;
+  for (let r = 0; r * cs < canvas.height; r++) {
+    for (let c = 0; c * cs < canvas.width; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? COLOR.checker1 : COLOR.checker2;
+      ctx.fillRect(c * cs, r * cs, cs, cs);
+    }
+  }
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(image, 0, 0, image.width * zoom, image.height * zoom);
+
+  /* saved frames */
+  frames.forEach(function (fr, i) {
+    const sel = i === selectedIndex;
+    const x = fr.x * zoom + 0.5;
+    const y = fr.y * zoom + 0.5;
+    const w = fr.w * zoom;
+    const h = fr.h * zoom;
+
+    ctx.strokeStyle = sel ? COLOR.selected : COLOR.frame;
+    ctx.lineWidth   = sel ? 2 : 1;
+    ctx.setLineDash(sel ? [] : [4, 3]);
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.fillStyle = sel ? COLOR.selectedFill : COLOR.frameFill;
+    ctx.fillRect(fr.x * zoom, fr.y * zoom, w, h);
+
+    const fs = Math.max(9, zoom * 3);
+    ctx.setLineDash([]);
+    ctx.fillStyle = sel ? COLOR.selected : COLOR.frame;
+    ctx.font = 'bold ' + fs + 'px monospace';
+    ctx.fillText(fr.name, fr.x * zoom + 3, fr.y * zoom + fs + 2);
+  });
+
+  /* draft rectangle while drawing */
+  if (draft) {
+    const x = Math.min(draft.startX, draft.curX) * zoom;
+    const y = Math.min(draft.startY, draft.curY) * zoom;
+    const w = Math.abs(draft.curX - draft.startX) * zoom;
+    const h = Math.abs(draft.curY - draft.startY) * zoom;
+
+    ctx.strokeStyle = COLOR.drawing;
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+    ctx.fillStyle = COLOR.drawingFill;
+    ctx.fillRect(x, y, w, h);
+
+    ctx.fillStyle = COLOR.drawing;
+    ctx.font = '10px monospace';
+    ctx.fillText(
+      Math.abs(draft.curX - draft.startX) + '×' + Math.abs(draft.curY - draft.startY),
+      x + 3, y - 5
+    );
+  }
+}
+
+/* ================================================================
+   CANVAS INTERACTION
+   ================================================================ */
+function toImg(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: Math.round((clientX - r.left)  / state.zoom),
+    y: Math.round((clientY - r.top)   / state.zoom),
+  };
+}
+
+canvas.addEventListener('mousedown', function (e) {
+  if (!state.image || e.button !== 0) return;
+  const p = toImg(e.clientX, e.clientY);
+  state.draft = { startX: p.x, startY: p.y, curX: p.x, curY: p.y };
+});
+
+canvas.addEventListener('mousemove', function (e) {
+  if (!state.image) return;
+  const p = toImg(e.clientX, e.clientY);
+  coordsEl.textContent = 'x: ' + p.x + '  y: ' + p.y;
+  if (state.draft) {
+    state.draft.curX = p.x;
+    state.draft.curY = p.y;
+    render();
+  }
+});
+
+canvas.addEventListener('mouseup', function (e) {
+  if (!state.draft) return;
+  const p = toImg(e.clientX, e.clientY);
+  state.draft.curX = p.x;
+  state.draft.curY = p.y;
+
+  const x = Math.min(state.draft.startX, p.x);
+  const y = Math.min(state.draft.startY, p.y);
+  const w = Math.abs(p.x - state.draft.startX);
+  const h = Math.abs(p.y - state.draft.startY);
+
+  state.draft = null;
+
+  if (w >= 2 && h >= 2) {
+    const name = 'frame_' + state.counter++;
+    state.frames.push({ x, y, w, h, name });
+    state.selectedIndex = state.frames.length - 1;
+    setStatus('Frame adicionado: x=' + x + ' y=' + y + ' ' + w + '×' + h);
+    renderList();
+  }
+
+  render();
+});
+
+canvas.addEventListener('mouseleave', function () {
+  if (state.draft) { state.draft = null; render(); }
+});
+
+/* ================================================================
+   ZOOM
+   ================================================================ */
+zoomSlider.addEventListener('input', function () {
+  state.zoom = parseFloat(this.value);
+  zoomValEl.textContent = state.zoom + '×';
+  render();
+});
+
+/* ================================================================
+   SIDEBAR LIST
+   ================================================================ */
+function renderList() {
+  frameCount.textContent = state.frames.length;
+
+  if (state.frames.length === 0) {
+    framesList.innerHTML = '<div class="empty-msg">Nenhum frame marcado ainda.</div>';
+    return;
+  }
+
+  framesList.innerHTML = '';
+  state.frames.forEach(function (fr, i) {
+    const item = document.createElement('div');
+    item.className = 'frame-item' + (i === state.selectedIndex ? ' selected' : '');
+    item.addEventListener('click', function () { selectFrame(i); });
+
+    const idx = document.createElement('span');
+    idx.className = 'frame-idx';
+    idx.textContent = i;
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'frame-name';
+    nameInput.value = fr.name;
+    nameInput.addEventListener('click', function (e) { e.stopPropagation(); });
+    nameInput.addEventListener('change', function () {
+      state.frames[i].name = this.value.trim() || fr.name;
+      render();
+    });
+
+    const coords = document.createElement('span');
+    coords.className = 'frame-coords';
+    coords.textContent = fr.x + ',' + fr.y + '\n' + fr.w + '×' + fr.h;
+
+    const del = document.createElement('button');
+    del.className = 'frame-del';
+    del.textContent = '×';
+    del.title = 'Apagar frame';
+    del.addEventListener('click', function (e) {
+      e.stopPropagation();
+      deleteFrame(i);
+    });
+
+    item.appendChild(idx);
+    item.appendChild(nameInput);
+    item.appendChild(coords);
+    item.appendChild(del);
+    framesList.appendChild(item);
+  });
+}
+
+function selectFrame(i) {
+  state.selectedIndex = i;
+  render();
+  renderList();
+}
+
+function deleteFrame(i) {
+  state.frames.splice(i, 1);
+  state.selectedIndex = state.frames.length > 0
+    ? Math.min(state.selectedIndex, state.frames.length - 1)
+    : -1;
+  render();
+  renderList();
+}
+
+/* ================================================================
+   ACTION BUTTONS
+   ================================================================ */
+document.getElementById('btnExport').addEventListener('click', async function () {
+  if (!state.image || state.frames.length === 0) {
+    setStatus('Nada para exportar. Marque os frames primeiro.', true);
+    return;
+  }
+  setStatus('Exportando...');
+  for (let i = 0; i < state.frames.length; i++) {
+    const fr  = state.frames[i];
+    const tmp = document.createElement('canvas');
+    tmp.width  = fr.w;
+    tmp.height = fr.h;
+    const tc = tmp.getContext('2d');
+    tc.imageSmoothingEnabled = false;
+    tc.drawImage(state.image, fr.x, fr.y, fr.w, fr.h, 0, 0, fr.w, fr.h);
+
+    const a = document.createElement('a');
+    a.download = String(i).padStart(2, '0') + '_' + fr.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '.png';
+    a.href = tmp.toDataURL('image/png');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    setStatus('Exportando ' + (i + 1) + '/' + state.frames.length + '...');
+    await new Promise(function (r) { setTimeout(r, 60); });
+  }
+  setStatus('✓ ' + state.frames.length + ' frames exportados!');
+});
+
+document.getElementById('btnClear').addEventListener('click', function () {
+  if (state.frames.length === 0) return;
+  if (!confirm('Apagar todos os frames?')) return;
+  state.frames = [];
+  state.selectedIndex = -1;
+  render();
+  renderList();
+  setStatus('Frames apagados.');
+});
+
+/* ================================================================
+   HELPERS
+   ================================================================ */
+function setStatus(msg, isError) {
+  statusEl.textContent = msg;
+  statusEl.className   = isError ? 'error' : '';
+}
+
+/* init */
+setStatus('Carregue o spritesheet para começar.');
+</script>
+</body>
+</html>
